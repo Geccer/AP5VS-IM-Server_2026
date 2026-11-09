@@ -19,17 +19,16 @@ public class App {
 			try {
 				port = Integer.decode(args[0]);
 			} catch (NumberFormatException e) {
-				System.err.printf("Argument %s is not integer, using default value", args[0], port);
+				System.err.printf("Argument %s is not integer, using default value %d\n", args[0], port);
 			}
 			if (args.length > 1)
 				try {
 					max_conn = Integer.decode(args[1]);
 				} catch (NumberFormatException e) {
-					System.err.printf("Argument %s is not integer, using default value", args[1], max_conn);
+					System.err.printf("Argument %s is not integer, using default value %d\n", args[1], max_conn);
 				}
 
 		}
-		// TODO Auto-generated method stub
 		System.out.printf("IM server listening on port %d, maximum nr. of connections=%d...\n", port, max_conn);
 		ExecutorService pool = Executors.newFixedThreadPool(2 * max_conn);
 		ActiveHandlers activeHandlers = new ActiveHandlers();
@@ -38,8 +37,24 @@ public class App {
 			ServerSocket sSocket = new ServerSocket(port);
 			do {
 				Socket clientSocket = sSocket.accept();
+
+				// the server is full - refuse the client
+				if (activeHandlers.size() >= max_conn) {
+					try {
+						OutputStreamWriter w = new OutputStreamWriter(clientSocket.getOutputStream(), "UTF-8");
+						w.write("Server is full, try again later.\r\n");
+						w.flush();
+					} catch (IOException e) {
+						// ignore
+					} finally {
+						clientSocket.close();
+					}
+					continue;
+				}
+
 				clientSocket.setKeepAlive(true);
 				SocketHandler handler = new SocketHandler(clientSocket, activeHandlers);
+				activeHandlers.add(handler);
 				pool.execute(handler.inputHandler);
 				pool.execute(handler.outputHandler);
 			} while (!pool.isTerminated());

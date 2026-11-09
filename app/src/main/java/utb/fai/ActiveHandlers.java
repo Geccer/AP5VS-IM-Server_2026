@@ -7,24 +7,65 @@ public class ActiveHandlers {
     private HashSet<SocketHandler> activeHandlersSet = new HashSet<SocketHandler>();
 
     /**
-     * sendMessageToAll - Pole zprávu vem aktivním klientùm kromì sebe sama
-     * 
-     * @param sender  - reference odesílatele
-     * @param message - øetìzec se zprávou
+     * sendMessageToAll - sends the message to all active clients except the sender
+     *
+     * @param sender  - reference to the sender
+     * @param message - message text
      */
     synchronized void sendMessageToAll(SocketHandler sender, String message) {
-        for (SocketHandler handler : activeHandlersSet) // pro vechny aktivní handlery
+        for (SocketHandler handler : activeHandlersSet)
             if (handler != sender) {
-                if (!handler.messages.offer(message)) // zkus pøidat zprávu do fronty jeho zpráv
-                    System.err.printf("Client %s message queue is full, dropping the message!\n", handler.clientID);
+                handler.deliver(message);
             }
     }
 
     /**
-     * add pøidá do mnoiny aktivních handlerù nový handler.
-     * Metoda je sychronizovaná, protoe HashSet neumí multithreading.
-     * 
-     * @param handler - reference na handler, který se má pøidat.
+     * sendMessageToRooms - sends the message to every client (except the sender)
+     * that already has a name and shares at least one room with the sender.
+     */
+    synchronized void sendMessageToRooms(SocketHandler sender, String message) {
+        for (SocketHandler handler : activeHandlersSet)
+            if (handler != sender && handler.name != null && handler.sharesRoomWith(sender)) {
+                handler.deliver(message);
+            }
+    }
+
+    /**
+     * sendPrivate - sends the message to the client with the given name.
+     *
+     * @return false if no such client exists
+     */
+    synchronized boolean sendPrivate(String targetName, String message) {
+        for (SocketHandler handler : activeHandlersSet)
+            if (targetName.equals(handler.name)) {
+                handler.deliver(message);
+                return true;
+            }
+        return false;
+    }
+
+    /**
+     * registerName - atomically sets the name of the handler, unless another
+     * active client already uses it.
+     *
+     * @return true if the name was set (or was already the handler's name)
+     */
+    synchronized boolean registerName(SocketHandler handler, String newName) {
+        for (SocketHandler other : activeHandlersSet)
+            if (other != handler && newName.equals(other.name))
+                return false;
+        handler.name = newName;
+        return true;
+    }
+
+    synchronized int size() {
+        return activeHandlersSet.size();
+    }
+
+    /**
+     * add adds a new handler to the set of active handlers.
+     *
+     * @param handler - handler to add
      * @return true if the set did not already contain the specified element.
      */
     synchronized boolean add(SocketHandler handler) {
@@ -32,11 +73,10 @@ public class ActiveHandlers {
     }
 
     /**
-     * remove odebere z mnoiny aktivních handlerù nový handler.
-     * Metoda je sychronizovaná, protoe HashSet neumí multithreading.
-     * 
-     * @param handler - reference na handler, který se má odstranit
-     * @return true if the set did not already contain the specified element.
+     * remove removes the handler from the set of active handlers.
+     *
+     * @param handler - handler to remove
+     * @return true if the set contained the specified element.
      */
     synchronized boolean remove(SocketHandler handler) {
         return activeHandlersSet.remove(handler);
